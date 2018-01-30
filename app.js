@@ -31,39 +31,55 @@ var hold = 0;
 
 function onMotion(tag) {
   if (timer) {
-    KumoApp.Log("Motion detected, renewing timeout.");
-    KumoApp.stopTimer(timer);
+    stopTimer();
     timer = KumoApp.setTimeout(onTimeout, timeout);
+    KumoApp.Log("Reset timeout.");
   }
   else {
-    maybeTurnOn();
+    incrementHold();
     timer = KumoApp.setTimeout(onTimeout, timeout);
+    KumoApp.Log("Set timeout.");
   }
+  
+  KumoApp.Log("Started timer [" + timer + "].");
 }
 
-function incrementHold(tag) {
+function onTimeout() {
+  KumoApp.Log("Timeout elapsed.");
+  stopTimer();
+  decrementHold();
+}
+
+function incrementHold() {
   maybeTurnOn();
   hold++;
+  KumoApp.Log("Hold [" + hold + "].");
 }
 
-function decrementHold(decrementHold) {
+function decrementHold() {
   hold--;
-  if (hold === 0 && !timer)
-  {
-    onTimeout();
+  maybeTurnOff();
+  KumoApp.Log("Hold [" + hold + "].");
+}
+
+function stopTimer() {
+  if (timer) {
+    KumoApp.stopTimer(timer);
+    KumoApp.Log("Stopped timer [" + timer + "].");
+    timer = null;
   }
 }
 
 function maybeTurnOn() {
   if (!on) {
-    KumoApp.Log("Initial motion detected.", 100);
+    KumoApp.Log("Turned on.", 100);
     on = true;
   }
 }
 
-function onTimeout() {
-  if (hold === 0) {
-    KumoApp.Log("Motion timed out.", 101);
+function maybeTurnOff() {
+  if (on && hold === 0) {
+    KumoApp.Log("Turned off.", 101);
     on = false;
   }
 }
@@ -76,6 +92,3 @@ tags.forEach(
       tag.detected = incrementHold;
       tag.timedOut = decrementHold
     });
-
-
-
