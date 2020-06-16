@@ -15,7 +15,7 @@
  */
 
 /**
- * v1.0.0
+ * v1.1.0
  * 
  * https://github.com/DavidValeri/kumoapp-ifttt-motion-detector
  * 
@@ -26,27 +26,48 @@
 var tags = <#Motion sensing tags used as triggers_[12|13|21|26|52|72]_N#>;
 var timeout=<%Delay, in minutes, after last detected open/close/motion event before triggering timeout.  PIR tags control their own timeouts and are not affected by this setting_N%>*60*1000;
 var on = false;
-var timer;
+var timers = {};
+var pirTagMotionState = {};
 var hold = 0;
 
-function onMotion(tag) {
-  if (timer) {
-    stopTimer();
-    timer = KumoApp.setTimeout(onTimeout, timeout);
-    KumoApp.Log("Reset timeout.");
+function onPirTagMotion(tag) {
+  KumoApp.Log("Motion on [" + tag.name + "].");
+  if (isPirTagInMotion(tag)) {
+    KumoApp.Log("Tag [" + tag.name + "] sent unpaired motion event, ignoring.");
   }
   else {
-    incrementHold();
-    timer = KumoApp.setTimeout(onTimeout, timeout);
-    KumoApp.Log("Set timeout.");
+    pirTagMotionState[tag.uuid] = true;
+    incrementHold();   
   }
-  
-  KumoApp.Log("Started timer [" + timer + "].");
 }
 
-function onTimeout() {
-  KumoApp.Log("Timeout elapsed.");
-  stopTimer();
+function onPirTagTimeout(tag) {
+  KumoApp.Log("Timeout elapsed for [" + tag.name + "].");
+  if (!isPirTagInMotion(tag)) {
+    KumoApp.Log("Tag [" + tag.name + "] sent unpaired timeout event, ignoring.");
+  }
+  else {
+    pirTagMotionState[tag.uuid] = false;
+    decrementHold();   
+  }
+}
+
+function isPirTagInMotion(tag) {
+    return !!pirTagMotionState[(tag.uuid)];
+}
+
+function onTagMotion(tag) {
+  KumoApp.Log("Motion on [" + tag.name + "].");
+  if (!isTimerSet(tag)) {
+    incrementHold();
+  }
+  startOrResetTimer(tag);
+  maybeTurnOn();
+}
+
+function onTagMotionTimeout(tag) {
+  KumoApp.Log("Timeout elapsed for [" + tag.name + "].");
+  clearTimer(tag);
   decrementHold();
 }
 
@@ -62,11 +83,36 @@ function decrementHold() {
   KumoApp.Log("Hold [" + hold + "].");
 }
 
-function stopTimer() {
+function isTimerSet(tag) {
+    return !!timers[(tag.uuid)];
+}
+
+function startOrResetTimer(tag) {
+  var timer = timers[tag.uuid];
+  var timeoutFunction = function() { onTagMotionTimeout(tag) };
+
+  if (timer) {
+    stopAndClearTimer(tag);
+    timer = KumoApp.setTimeout(timeoutFunction, timeout);
+    timers[tag.uuid] = timer;
+    KumoApp.Log("Reset timer for [" + tag.name + "].");
+  }
+  else {
+    timer = KumoApp.setTimeout(timeoutFunction, timeout);
+    timers[tag.uuid] = timer;
+    KumoApp.Log("Set timer for [" + tag.name + "].");
+  }
+}
+
+function clearTimer(tag) {
+  timers[tag.uuid] = undefined;
+}
+
+function stopAndClearTimer(tag) {
+  var timer = timers[tag.uuid];
   if (timer) {
     KumoApp.stopTimer(timer);
-    KumoApp.Log("Stopped timer [" + timer + "].");
-    timer = null;
+    clearTimer(tag);
   }
 }
 
@@ -86,9 +132,9 @@ function maybeTurnOff() {
 
 tags.forEach(
     function(tag) {
-      tag.moved = onMotion;
-      tag.opened = onMotion;
-      tag.closed = onMotion;
-      tag.detected = incrementHold;
-      tag.timedOut = decrementHold
+      tag.moved = onTagMotion;
+      tag.opened = onTagMotion;
+      tag.closed = onTagMotion;
+      tag.detected = onPirTagMotion;
+      tag.timedOut = onPirTagTimeout
     });
